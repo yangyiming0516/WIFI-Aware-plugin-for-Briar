@@ -1,0 +1,1215 @@
+Index: bramble-core/src/main/java/org/briarproject/bramble/keyagreement/PayloadParserImpl.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- bramble-core/src/main/java/org/briarproject/bramble/keyagreement/PayloadParserImpl.java	(revision be9255029bc252b843285a1e593661d29e6f520c)
++++ bramble-core/src/main/java/org/briarproject/bramble/keyagreement/PayloadParserImpl.java	(date 1634943458752)
+@@ -12,6 +12,7 @@
+ import org.briarproject.bramble.api.plugin.BluetoothConstants;
+ import org.briarproject.bramble.api.plugin.LanTcpConstants;
+ import org.briarproject.bramble.api.plugin.TransportId;
++import org.briarproject.bramble.api.plugin.WifiAwareConstants;
+ 
+ import java.io.ByteArrayInputStream;
+ import java.io.IOException;
+@@ -24,6 +25,7 @@
+ import static org.briarproject.bramble.api.keyagreement.KeyAgreementConstants.BETA_PROTOCOL_VERSION;
+ import static org.briarproject.bramble.api.keyagreement.KeyAgreementConstants.COMMIT_LENGTH;
+ import static org.briarproject.bramble.api.keyagreement.KeyAgreementConstants.PROTOCOL_VERSION;
++import static org.briarproject.bramble.api.keyagreement.KeyAgreementConstants.TRANSPORT_ID_AWARE;
+ import static org.briarproject.bramble.api.keyagreement.KeyAgreementConstants.TRANSPORT_ID_BLUETOOTH;
+ import static org.briarproject.bramble.api.keyagreement.KeyAgreementConstants.TRANSPORT_ID_LAN;
+ 
+@@ -68,6 +70,9 @@
+ 			} else if (transportId == TRANSPORT_ID_LAN) {
+ 				TransportId id = LanTcpConstants.ID;
+ 				recognised.add(new TransportDescriptor(id, descriptor));
++			} else if (transportId == TRANSPORT_ID_AWARE){
++				TransportId id = WifiAwareConstants.ID;
++				recognised.add(new TransportDescriptor(id, descriptor));
+ 			}
+ 		}
+ 		return new Payload(commitment, recognised);
+Index: bramble-api/src/main/java/org/briarproject/bramble/api/keyagreement/KeyAgreementConstants.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- bramble-api/src/main/java/org/briarproject/bramble/api/keyagreement/KeyAgreementConstants.java	(revision be9255029bc252b843285a1e593661d29e6f520c)
++++ bramble-api/src/main/java/org/briarproject/bramble/api/keyagreement/KeyAgreementConstants.java	(date 1634509923449)
+@@ -33,6 +33,11 @@
+ 	 */
+ 	int TRANSPORT_ID_LAN = 1;
+ 
++	/**
++	 * The transport identifier for Wifi Aware.
++	 */
++	int TRANSPORT_ID_AWARE = 2;
++
+ 	/**
+ 	 * Label for deriving the shared secret.
+ 	 */
+Index: bramble-api/src/main/java/org/briarproject/bramble/api/plugin/duplex/DuplexPlugin.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- bramble-api/src/main/java/org/briarproject/bramble/api/plugin/duplex/DuplexPlugin.java	(revision be9255029bc252b843285a1e593661d29e6f520c)
++++ bramble-api/src/main/java/org/briarproject/bramble/api/plugin/duplex/DuplexPlugin.java	(date 1634924036616)
+@@ -1,5 +1,6 @@
+ package org.briarproject.bramble.api.plugin.duplex;
+ 
++import org.briarproject.bramble.api.FormatException;
+ import org.briarproject.bramble.api.data.BdfList;
+ import org.briarproject.bramble.api.keyagreement.KeyAgreementListener;
+ import org.briarproject.bramble.api.nullsafety.NotNullByDefault;
+@@ -44,7 +45,7 @@
+ 	 */
+ 	@Nullable
+ 	DuplexTransportConnection createKeyAgreementConnection(
+-			byte[] remoteCommitment, BdfList descriptor);
++			byte[] remoteCommitment, BdfList descriptor) throws FormatException;
+ 
+ 	/**
+ 	 * Returns true if the plugin supports rendezvous connections.
+Index: bramble-android/src/main/java/org/briarproject/bramble/plugin/wifiaware/AndroidWifiAwareTransportConnection.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- bramble-android/src/main/java/org/briarproject/bramble/plugin/wifiaware/AndroidWifiAwareTransportConnection.java	(date 1635114161881)
++++ bramble-android/src/main/java/org/briarproject/bramble/plugin/wifiaware/AndroidWifiAwareTransportConnection.java	(date 1635114161881)
+@@ -0,0 +1,52 @@
++package org.briarproject.bramble.plugin.wifiaware;
++
++import android.net.ConnectivityManager;
++import android.net.wifi.aware.DiscoverySession;
++
++import org.briarproject.bramble.api.nullsafety.NotNullByDefault;
++import org.briarproject.bramble.api.plugin.Plugin;
++import org.briarproject.bramble.api.plugin.duplex.AbstractDuplexTransportConnection;
++import org.briarproject.bramble.util.IoUtils;
++
++import java.io.IOException;
++import java.io.InputStream;
++import java.io.OutputStream;
++import java.net.Socket;
++
++import javax.annotation.concurrent.ThreadSafe;
++
++@ThreadSafe
++@NotNullByDefault
++public class AndroidWifiAwareTransportConnection extends AbstractDuplexTransportConnection {
++
++	private final Socket socket;
++	private final DiscoverySession session;
++	private final ConnectivityManager.NetworkCallback callback;
++	private final ConnectivityManager connectivityManager;
++
++	AndroidWifiAwareTransportConnection(Plugin plugin, Socket socket, DiscoverySession session, ConnectivityManager connectivityManager, ConnectivityManager.NetworkCallback callback) {
++		super(plugin);
++		this.socket = socket;
++		this.session = session;
++		this.callback = callback;
++		this.connectivityManager = connectivityManager;
++	}
++
++	@Override
++	protected InputStream getInputStream() throws IOException {
++		return IoUtils.getInputStream(socket);
++	}
++
++	@Override
++	protected OutputStream getOutputStream() throws IOException {
++		return IoUtils.getOutputStream(socket);
++	}
++
++	@Override
++	protected void closeConnection(boolean exception) throws IOException {
++		socket.close();
++		connectivityManager.unregisterNetworkCallback(callback);
++		//session.close();
++	}
++
++}
+Index: bramble-core/src/main/java/org/briarproject/bramble/keyagreement/KeyAgreementConnector.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- bramble-core/src/main/java/org/briarproject/bramble/keyagreement/KeyAgreementConnector.java	(revision be9255029bc252b843285a1e593661d29e6f520c)
++++ bramble-core/src/main/java/org/briarproject/bramble/keyagreement/KeyAgreementConnector.java	(date 1633546855637)
+@@ -11,6 +11,7 @@
+ import org.briarproject.bramble.api.nullsafety.NotNullByDefault;
+ import org.briarproject.bramble.api.plugin.BluetoothConstants;
+ import org.briarproject.bramble.api.plugin.LanTcpConstants;
++import org.briarproject.bramble.api.plugin.WifiAwareConstants;
+ import org.briarproject.bramble.api.plugin.Plugin;
+ import org.briarproject.bramble.api.plugin.PluginManager;
+ import org.briarproject.bramble.api.plugin.TransportId;
+@@ -51,7 +52,7 @@
+ 			getLogger(KeyAgreementConnector.class.getName());
+ 
+ 	private static final List<TransportId> PREFERRED_TRANSPORTS =
+-			asList(BluetoothConstants.ID, LanTcpConstants.ID);
++			asList(WifiAwareConstants.ID);
+ 
+ 	private final Callbacks callbacks;
+ 	private final KeyAgreementCrypto keyAgreementCrypto;
+@@ -88,6 +89,7 @@
+ 		// Start all listeners and collect their descriptors
+ 		List<TransportDescriptor> descriptors = new ArrayList<>();
+ 		for (DuplexPlugin plugin : pluginManager.getKeyAgreementPlugins()) {
++			if (plugin.getId() == BluetoothConstants.ID) continue;
+ 			KeyAgreementListener l =
+ 					plugin.createKeyAgreementListener(commitment);
+ 			if (l != null) {
+Index: gradle/wrapper/gradle-wrapper.properties
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>GBK
+===================================================================
+--- gradle/wrapper/gradle-wrapper.properties	(revision be9255029bc252b843285a1e593661d29e6f520c)
++++ gradle/wrapper/gradle-wrapper.properties	(date 1622489443221)
+@@ -1,7 +1,6 @@
+-#Mon Oct 14 13:25:25 BRT 2019
++#Mon May 31 22:30:43 EEST 2021
+ distributionBase=GRADLE_USER_HOME
++distributionUrl=https\://services.gradle.org/distributions/gradle-6.5.1-bin.zip
+ distributionPath=wrapper/dists
+-zipStoreBase=GRADLE_USER_HOME
+ zipStorePath=wrapper/dists
+-distributionUrl=https\://services.gradle.org/distributions/gradle-6.5-all.zip
+-distributionSha256Sum=c9910513d0eed63cd8f5c7fec4cb4a05731144770104a0871234a4edc3ba3cef
+\ No newline at end of file
++zipStoreBase=GRADLE_USER_HOME
+Index: bramble-android/src/main/AndroidManifest.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- bramble-android/src/main/AndroidManifest.xml	(revision be9255029bc252b843285a1e593661d29e6f520c)
++++ bramble-android/src/main/AndroidManifest.xml	(date 1635080310343)
+@@ -3,9 +3,12 @@
+ 	xmlns:android="http://schemas.android.com/apk/res/android">
+ 
+ 	<uses-feature android:name="android.hardware.bluetooth" android:required="false"/>
+-
++	<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
++	<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+ 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+ 	<uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
++	<uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
++	<uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+ 	<uses-permission android:name="android.permission.BLUETOOTH"/>
+ 	<uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
+ 	<uses-permission android:name="android.permission.INTERNET"/>
+Index: bramble-android/src/main/java/org/briarproject/bramble/plugin/wifiaware/AndroidWifiAwarePluginFactory.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- bramble-android/src/main/java/org/briarproject/bramble/plugin/wifiaware/AndroidWifiAwarePluginFactory.java	(date 1633848513241)
++++ bramble-android/src/main/java/org/briarproject/bramble/plugin/wifiaware/AndroidWifiAwarePluginFactory.java	(date 1633848513241)
+@@ -0,0 +1,65 @@
++package org.briarproject.bramble.plugin.wifiaware;
++
++import android.app.Application;
++
++import org.briarproject.bramble.api.event.EventBus;
++import org.briarproject.bramble.api.lifecycle.IoExecutor;
++import org.briarproject.bramble.api.plugin.Backoff;
++import org.briarproject.bramble.api.plugin.BackoffFactory;
++import org.briarproject.bramble.api.plugin.PluginCallback;
++import org.briarproject.bramble.api.plugin.TransportId;
++import org.briarproject.bramble.api.plugin.duplex.DuplexPlugin;
++import org.briarproject.bramble.api.plugin.duplex.DuplexPluginFactory;
++import org.briarproject.bramble.api.system.WakefulIoExecutor;
++
++import java.util.concurrent.Executor;
++
++import javax.inject.Inject;
++
++import static org.briarproject.bramble.api.plugin.WifiAwareConstants.ID;
++
++public class AndroidWifiAwarePluginFactory implements DuplexPluginFactory {
++	private static final int MAX_LATENCY = 30 * 1000; // 30 seconds
++	private static final int MAX_IDLE_TIME = 30 * 1000; // 30 seconds
++	private static final int MIN_POLLING_INTERVAL = 60 * 1000; // 1 minute
++	private static final int MAX_POLLING_INTERVAL = 10 * 60 * 1000; // 10 mins
++	private static final double BACKOFF_BASE = 1.2;
++	private final Executor ioExecutor, wakefulIoExecutor;
++	private final EventBus eventBus;
++	private final BackoffFactory backoffFactory;
++	private final Application app;
++
++	@Inject
++	AndroidWifiAwarePluginFactory(@IoExecutor Executor ioExecutor,
++			@WakefulIoExecutor Executor wakefulIoExecutor,
++			EventBus eventBus,
++			BackoffFactory backoffFactory,
++			Application app) {
++		this.ioExecutor = ioExecutor;
++		this.wakefulIoExecutor = wakefulIoExecutor;
++		this.eventBus = eventBus;
++		this.backoffFactory = backoffFactory;
++		this.app = app;
++	}
++
++	@Override
++	public long getMaxLatency() {
++		return MAX_LATENCY;
++	}
++
++	@Override
++	public DuplexPlugin createPlugin(PluginCallback callback) {
++		Backoff backoff = backoffFactory.createBackoff(MIN_POLLING_INTERVAL,
++				MAX_POLLING_INTERVAL, BACKOFF_BASE);
++		AndroidWifiAwarePlugin plugin = new AndroidWifiAwarePlugin(ioExecutor,
++				wakefulIoExecutor, backoff, app, callback,
++				MAX_LATENCY, MAX_IDLE_TIME);
++		eventBus.addListener(plugin);
++		return plugin;
++	}
++
++	@Override
++	public TransportId getId() {
++		return ID;
++	}
++}
+Index: briar-android/src/main/AndroidManifest.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- briar-android/src/main/AndroidManifest.xml	(revision be9255029bc252b843285a1e593661d29e6f520c)
++++ briar-android/src/main/AndroidManifest.xml	(date 1635080310347)
+@@ -19,6 +19,9 @@
+ 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+ 	<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+ 	<uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
++	<uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
++	<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
++	<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+ 	<uses-permission android:name="android.permission.BLUETOOTH" />
+ 	<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+ 	<uses-permission android:name="android.permission.CAMERA" />
+Index: briar-android/src/main/java/org/briarproject/briar/android/contact/add/nearby/AddNearbyContactViewModel.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- briar-android/src/main/java/org/briarproject/briar/android/contact/add/nearby/AddNearbyContactViewModel.java	(revision be9255029bc252b843285a1e593661d29e6f520c)
++++ briar-android/src/main/java/org/briarproject/briar/android/contact/add/nearby/AddNearbyContactViewModel.java	(date 1635012046621)
+@@ -6,7 +6,9 @@
+ import android.content.Context;
+ import android.content.Intent;
+ import android.content.IntentFilter;
++import android.content.pm.PackageManager;
+ import android.graphics.Bitmap;
++import android.net.wifi.WifiManager;
+ import android.util.DisplayMetrics;
+ import android.widget.Toast;
+ 
+@@ -37,6 +39,7 @@
+ import org.briarproject.bramble.api.nullsafety.NotNullByDefault;
+ import org.briarproject.bramble.api.plugin.BluetoothConstants;
+ import org.briarproject.bramble.api.plugin.LanTcpConstants;
++import org.briarproject.bramble.api.plugin.WifiAwareConstants;
+ import org.briarproject.bramble.api.plugin.Plugin;
+ import org.briarproject.bramble.api.plugin.Plugin.State;
+ import org.briarproject.bramble.api.plugin.PluginManager;
+@@ -74,6 +77,7 @@
+ import static android.bluetooth.BluetoothAdapter.ACTION_SCAN_MODE_CHANGED;
+ import static android.bluetooth.BluetoothAdapter.EXTRA_SCAN_MODE;
+ import static android.bluetooth.BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE;
++import static android.content.Context.WIFI_SERVICE;
+ import static android.widget.Toast.LENGTH_LONG;
+ import static java.util.logging.Level.INFO;
+ import static java.util.logging.Level.WARNING;
+@@ -154,6 +158,8 @@
+ 	private Plugin wifiPlugin;
+ 	@Nullable // UiThread
+ 	private BluetoothPlugin bluetoothPlugin;
++	@Nullable // UiThread
++	private Plugin wifiAwarePlugin;
+ 
+ 	// UiThread
+ 	private BluetoothDecision bluetoothDecision = BluetoothDecision.UNKNOWN;
+@@ -166,6 +172,8 @@
+ 	 */
+ 	private boolean hasEnabledWifi = false;
+ 
++	private boolean wifiAwareSupported = false;
++
+ 	/**
+ 	 * Records whether we've enabled the Bluetooth plugin so we don't enable it
+ 	 * more than once.
+@@ -198,9 +206,12 @@
+ 		this.contactExchangeManager = contactExchangeManager;
+ 		this.connectionManager = connectionManager;
+ 		bt = BluetoothAdapter.getDefaultAdapter();
++		wifiAwareSupported = app.getPackageManager().hasSystemFeature(
++				PackageManager.FEATURE_WIFI_AWARE);
+ 		wifiPlugin = pluginManager.getPlugin(LanTcpConstants.ID);
+ 		bluetoothPlugin = (BluetoothPlugin) pluginManager
+ 				.getPlugin(BluetoothConstants.ID);
++		wifiAwarePlugin = pluginManager.getPlugin(WifiAwareConstants.ID);
+ 		qrCodeDecoder = new QrCodeDecoder(androidExecutor, ioExecutor, this);
+ 		eventBus.addListener(this);
+ 		IntentFilter filter = new IntentFilter(ACTION_SCAN_MODE_CHANGED);
+@@ -225,6 +236,7 @@
+ 		wifiPlugin = pluginManager.getPlugin(LanTcpConstants.ID);
+ 		bluetoothPlugin = (BluetoothPlugin) pluginManager
+ 				.getPlugin(BluetoothConstants.ID);
++		wifiAwarePlugin = pluginManager.getPlugin(WifiAwareConstants.ID);
+ 	}
+ 
+ 	@UiThread
+@@ -240,8 +252,14 @@
+ 		return bt != null && bluetoothPlugin != null;
+ 	}
+ 
++	@UiThread
++	private boolean isWifiAwareSupported() {
++		return wifiAwareSupported && wifiAwarePlugin != null;
++	}
++
+ 	@UiThread
+ 	private boolean isWifiReady() {
++		if (isWifiAwareSupported() && wifiAwarePlugin != null) return true;
+ 		if (wifiPlugin == null) return true; // Continue without wifi
+ 		State state = wifiPlugin.getState();
+ 		// Wait for plugin to become enabled
+@@ -271,13 +289,29 @@
+ 	@UiThread
+ 	private void enableWifiIfWeShould() {
+ 		if (hasEnabledWifi) return;
+-		if (wifiPlugin == null) return;
+-		State state = wifiPlugin.getState();
+-		if (state == STARTING_STOPPING || state == DISABLED) {
+-			LOG.info("Enabling wifi plugin");
+-			hasEnabledWifi = true;
+-			pluginManager.setPluginEnabled(LanTcpConstants.ID, true);
++		WifiManager wifiManager =
++				(WifiManager) getApplication().getApplicationContext().getSystemService(WIFI_SERVICE);
++		if (!wifiManager.isWifiEnabled()) {
++			if (wifiManager.setWifiEnabled(true)) {
++				LOG.info("Enabled wifi");
++			}
++		}
++		if (wifiPlugin != null) {
++			State state = wifiPlugin.getState();
++			if (state == STARTING_STOPPING || state == DISABLED) {
++				LOG.info("Enabling wifi plugin");
++				hasEnabledWifi = true;
++				pluginManager.setPluginEnabled(LanTcpConstants.ID, true);
++			}
+ 		}
++		if (wifiAwarePlugin != null) {
++			State state = wifiAwarePlugin.getState();
++			if (state == STARTING_STOPPING || state == DISABLED) {
++				LOG.info("Enabling WIFI Aware plugin");
++				hasEnabledWifi = true;
++				pluginManager.setPluginEnabled(WifiAwareConstants.ID, true);
++			}
++		}
+ 	}
+ 
+ 	@UiThread
+@@ -352,6 +386,11 @@
+ 				if (LOG.isLoggable(INFO)) {
+ 					LOG.info("Wifi state changed to " + t.getState());
+ 				}
++				showQrCodeFragmentIfAllowed();
++			} else if (t.getTransportId().equals(WifiAwareConstants.ID)) {
++				if (LOG.isLoggable(INFO)) {
++					LOG.info("WifiAware state changed to " + t.getState());
++				}
+ 				showQrCodeFragmentIfAllowed();
+ 			}
+ 		} else if (e instanceof KeyAgreementListeningEvent) {
+Index: bramble-api/src/main/java/org/briarproject/bramble/api/plugin/WifiAwareConstants.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- bramble-api/src/main/java/org/briarproject/bramble/api/plugin/WifiAwareConstants.java	(date 1633851480419)
++++ bramble-api/src/main/java/org/briarproject/bramble/api/plugin/WifiAwareConstants.java	(date 1633851480419)
+@@ -0,0 +1,11 @@
++package org.briarproject.bramble.api.plugin;
++
++public interface WifiAwareConstants {
++
++	TransportId ID = new TransportId("org.briarproject.bramble.wifiaware");
++
++	int UUID_BYTES = 16;
++	// Transport properties
++	String PROP_PASSPHRASE = "passphrase";
++	String PROP_UUID = "uuid";
++}
+Index: bramble-android/src/main/java/org/briarproject/bramble/plugin/wifiaware/AndroidWifiAwarePlugin.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- bramble-android/src/main/java/org/briarproject/bramble/plugin/wifiaware/AndroidWifiAwarePlugin.java	(date 1635451646778)
++++ bramble-android/src/main/java/org/briarproject/bramble/plugin/wifiaware/AndroidWifiAwarePlugin.java	(date 1635451646778)
+@@ -0,0 +1,724 @@
++package org.briarproject.bramble.plugin.wifiaware;
++
++
++import android.app.Application;
++import android.content.BroadcastReceiver;
++import android.content.Context;
++import android.content.Intent;
++import android.content.IntentFilter;
++import android.content.pm.PackageManager;
++import android.net.ConnectivityManager;
++import android.net.Network;
++import android.net.NetworkCapabilities;
++import android.net.NetworkRequest;
++import android.net.NetworkSpecifier;
++import android.net.wifi.aware.AttachCallback;
++import android.net.wifi.aware.DiscoverySessionCallback;
++import android.net.wifi.aware.PeerHandle;
++import android.net.wifi.aware.PublishConfig;
++import android.net.wifi.aware.PublishDiscoverySession;
++import android.net.wifi.aware.SubscribeConfig;
++import android.net.wifi.aware.DiscoverySession;
++import android.net.wifi.aware.SubscribeDiscoverySession;
++import android.net.wifi.aware.WifiAwareManager;
++import android.net.wifi.aware.WifiAwareNetworkInfo;
++import android.net.wifi.aware.WifiAwareNetworkSpecifier;
++import android.net.wifi.aware.WifiAwareSession;
++
++import org.briarproject.bramble.api.FormatException;
++import org.briarproject.bramble.api.Pair;
++import org.briarproject.bramble.api.data.BdfList;
++import org.briarproject.bramble.api.event.Event;
++import org.briarproject.bramble.api.keyagreement.KeyAgreementConnection;
++import org.briarproject.bramble.api.keyagreement.KeyAgreementListener;
++import org.briarproject.bramble.api.plugin.ConnectionHandler;
++import org.briarproject.bramble.api.plugin.PluginCallback;
++import org.briarproject.bramble.api.plugin.PluginException;
++import org.briarproject.bramble.api.plugin.TransportId;
++import org.briarproject.bramble.api.event.EventListener;
++
++import java.io.IOException;
++import java.net.Inet6Address;
++import java.net.ServerSocket;
++import java.net.Socket;
++import java.util.ArrayList;
++import java.util.Base64;
++import java.util.Collection;
++import java.util.List;
++import java.util.UUID;
++import java.util.concurrent.CountDownLatch;
++import java.util.concurrent.Executor;
++import java.util.concurrent.TimeUnit;
++import java.util.logging.Logger;
++import javax.annotation.Nullable;
++
++import org.briarproject.bramble.api.plugin.Backoff;
++import org.briarproject.bramble.api.plugin.duplex.DuplexPlugin;
++import org.briarproject.bramble.api.plugin.duplex.DuplexTransportConnection;
++import org.briarproject.bramble.api.properties.TransportProperties;
++import org.briarproject.bramble.api.rendezvous.KeyMaterialSource;
++import org.briarproject.bramble.api.rendezvous.RendezvousEndpoint;
++import org.briarproject.bramble.util.IoUtils;
++
++import static android.net.wifi.aware.PublishConfig.PUBLISH_TYPE_UNSOLICITED;
++import static java.util.logging.Level.INFO;
++import static java.util.logging.Level.WARNING;
++import static org.briarproject.bramble.api.keyagreement.KeyAgreementConstants.TRANSPORT_ID_AWARE;
++import static org.briarproject.bramble.api.plugin.Plugin.State.INACTIVE;
++import static org.briarproject.bramble.api.plugin.WifiAwareConstants.PROP_PASSPHRASE;
++import static org.briarproject.bramble.api.plugin.WifiAwareConstants.PROP_UUID;
++import static org.briarproject.bramble.api.plugin.WifiAwareConstants.ID;
++
++import static java.util.logging.Logger.getLogger;
++import static org.briarproject.bramble.util.LogUtils.logException;
++import static org.briarproject.bramble.util.StringUtils.isNullOrEmpty;
++
++
++public class AndroidWifiAwarePlugin implements DuplexPlugin, EventListener{
++	private static final Logger LOG =
++			getLogger(AndroidWifiAwarePlugin.class.getName());
++
++	private static final int MAX_DISCOVERY_MS = 10_000;
++	private final long maxLatency;
++	private final int maxIdleTime;
++	private final int socketTimeout;
++	//private final PluginState state = new PluginState();
++
++	private final Application app;
++	private final Executor ioExecutor, wakefulIoExecutor;
++	private final Backoff backoff;
++	private final Context appContext;
++	private final PluginCallback callback;
++	private final ConnectivityManager connectivityManager;
++
++	private volatile WifiAwareManager wifiAwareManager = null;
++	private volatile BroadcastReceiver receiver = null;
++	private volatile WifiAwareSession session = null;
++	private volatile PublishDiscoverySession transport_session = null;
++	private volatile DiscoverySession key_session = null;
++	private volatile Network key_network;
++	private volatile ConnectivityManager.NetworkCallback key_networkcallback;
++	private volatile NetworkCapabilities key_networkCapabilities = null;
++	private volatile String contact_uuid = null;
++	private volatile String contact_passphrase = null;
++	private volatile ServerSocket key_ss = null;
++	private volatile ServerSocket transport_ss = null;
++	private volatile ConnectivityManager.NetworkCallback transport_network_callback = null;
++
++
++	AndroidWifiAwarePlugin(Executor ioExecutor,
++			Executor wakefulIoExecutor,
++			Backoff backoff, Application app,
++			PluginCallback callback,
++			long maxLatency,
++			int maxIdleTime){
++		this.app = app;
++		this.ioExecutor = ioExecutor;
++		this.wakefulIoExecutor = wakefulIoExecutor;
++		this.backoff = backoff;
++		this.maxLatency = maxLatency;
++		this.maxIdleTime = maxIdleTime;
++		if (maxIdleTime > Integer.MAX_VALUE / 2)
++			socketTimeout = Integer.MAX_VALUE;
++		else socketTimeout = maxIdleTime * 2;
++		this.appContext = app.getApplicationContext();
++		this.callback = callback;
++		this.connectivityManager =
++				(ConnectivityManager) appContext.getSystemService(Context.CONNECTIVITY_SERVICE);
++	}
++
++	@Override
++	public void eventOccurred(Event e) {
++
++	}
++
++	@Nullable
++	@Override
++	public DuplexTransportConnection createConnection(TransportProperties p) {
++		String passphrase = p.get(PROP_PASSPHRASE);
++		if (isNullOrEmpty(passphrase)) return null;
++		String uuid = p.get(PROP_UUID);
++		if (isNullOrEmpty(uuid)) return null;
++		LOG.info("WIFI Aware createConnection passphrase " + passphrase);
++		LOG.info("WIFI Aware createConnection uuid " + uuid);
++
++		List<byte[]> uuid_bytes = new ArrayList<byte[]>();
++		uuid_bytes.add(uuid.getBytes());
++		final CountDownLatch latch = new CountDownLatch(2);
++		final SubscribeDiscoverySession[] tmp_session =
++				new SubscribeDiscoverySession[1];
++		tmp_session[0] = null;
++		final NetworkCapabilities[] contact_networkCapabilities =
++				new NetworkCapabilities[1];
++		contact_networkCapabilities[0] = null;
++		final Network[] contact_network = new Network[1];
++		contact_network[0] = null;
++		final ConnectivityManager.NetworkCallback[] contact_network_callback =
++				new ConnectivityManager.NetworkCallback[1];
++
++		SubscribeConfig config = new SubscribeConfig.Builder()
++				.setServiceName("Briar-WIFI-AWARE-TRANSPORT")
++				.setMatchFilter(uuid_bytes)
++				.build();
++		session.subscribe(config, new DiscoverySessionCallback() {
++			@Override
++			public void onSubscribeStarted(SubscribeDiscoverySession session) {
++				LOG.info("WIFI Aware createConnection started");
++				tmp_session[0] = session;
++			}
++
++			@Override
++			public void onServiceDiscovered(PeerHandle peerHandle,
++					byte[] serviceSpecificInfo, List<byte[]> matchFilter) {
++				LOG.info("WIFI Aware createConnection service discovered");
++				tmp_session[0].sendMessage(peerHandle,0,null);
++				LOG.info("WIFI Aware createConnection sent message");
++			}
++
++			@Override
++			public void onMessageReceived(PeerHandle peerHandle, byte[] message) {
++				LOG.info("WIFI Aware createConnection received message");
++				NetworkSpecifier networkSpecifier = new WifiAwareNetworkSpecifier.Builder(tmp_session[0], peerHandle)
++						.setPskPassphrase(passphrase)
++						.build();
++				NetworkRequest myNetworkRequest = new NetworkRequest.Builder()
++						.addTransportType(NetworkCapabilities.TRANSPORT_WIFI_AWARE)
++						.setNetworkSpecifier(networkSpecifier)
++						.build();
++				ConnectivityManager.NetworkCallback callback = new ConnectivityManager.NetworkCallback() {
++					@Override
++					public void onAvailable(Network network) {
++						LOG.info("WIFI Aware createConnection network available");
++						contact_network[0] = network;
++						latch.countDown();
++					}
++
++					@Override
++					public void onCapabilitiesChanged(Network network, NetworkCapabilities networkCapabilities) {
++						LOG.info("WIFI Aware createConnection onCapabilitiesChanged");
++						contact_networkCapabilities[0] = networkCapabilities;
++						contact_network[0] = network;
++						latch.countDown();
++					}
++
++				};
++
++				connectivityManager.requestNetwork(myNetworkRequest, callback);
++				contact_network_callback[0] = callback;
++			}
++		}, null);
++
++		boolean timeout;
++		try {
++			timeout = latch.await(60, TimeUnit.SECONDS);
++		} catch (InterruptedException e) {
++			LOG.info("WIFI Aware createConnection await interrupted");
++			//tmp_session[0].close();
++			return null;
++		}
++		if (timeout == false){
++			LOG.info("WIFI Aware createConnection await timeout");
++			//tmp_session[0].close();
++			return null;
++		}
++
++		if (contact_networkCapabilities[0] == null || contact_network[0] == null){
++			LOG.info("WIFI Aware createConnection missing parameters");
++			connectivityManager.unregisterNetworkCallback(contact_network_callback[0]);
++			//tmp_session[0].close();
++			return null;
++		}
++		LOG.info("WIFI Aware createConnection creating socket");
++		WifiAwareNetworkInfo peerAwareInfo = (WifiAwareNetworkInfo) contact_networkCapabilities[0]
++				.getTransportInfo();
++		Inet6Address peerIpv6 = peerAwareInfo.getPeerIpv6Addr();
++		int port = peerAwareInfo.getPort();
++		Socket socket;
++		try {
++			socket = contact_network[0]
++					.getSocketFactory().createSocket(peerIpv6, port);
++		} catch (IOException e) {
++			LOG.info("WIFI Aware createConnection socket failed");
++			connectivityManager.unregisterNetworkCallback(contact_network_callback[0]);
++			//tmp_session[0].close();
++			return null;
++		}
++		LOG.info("WIFI Aware createConnection created socket");
++		return new AndroidWifiAwareTransportConnection(this, socket, tmp_session[0], connectivityManager, contact_network_callback[0]);
++	}
++
++	@Override
++	public boolean supportsKeyAgreement() {
++		return true;
++	}
++
++	@Nullable
++	@Override
++	public KeyAgreementListener createKeyAgreementListener(
++			byte[] localCommitment) {
++		LOG.info("WIFI Aware createKeyAgreementListener");
++
++		ServerSocket ss;
++		try {
++			ss = new ServerSocket(0);
++		} catch (IOException e) {
++			logException(LOG, WARNING, e);
++			return null;
++		}
++		LOG.info("WIFI Aware KeyAgreementListener ServerSocket created");
++
++		BdfList descriptor = new BdfList();
++		descriptor.add(TRANSPORT_ID_AWARE);
++		String passphrase = Base64.getEncoder().encodeToString(localCommitment);
++		return new AwareKeyAgreementListener(descriptor, ss, passphrase);
++	}
++
++	private class AwareKeyAgreementListener extends KeyAgreementListener {
++
++		private final ServerSocket key_ss;
++		private DiscoverySession key_session;
++		private final int key_port;
++		private final String key_uuid;
++		private ConnectivityManager.NetworkCallback network_callback;
++
++		private AwareKeyAgreementListener(BdfList descriptor, ServerSocket ss, String localCommitment) {
++			super(descriptor);
++			key_ss = ss;
++			key_port = ss.getLocalPort();
++			key_uuid = UUID.randomUUID().toString();
++			List<byte[]> matchFilter = new ArrayList<byte[]>();
++			matchFilter.add(key_uuid.getBytes());
++			descriptor.add(key_uuid);
++			PublishConfig config = new PublishConfig.Builder()
++					.setServiceName("Briar-WIFI-AWARE-ADD")
++					.setMatchFilter(matchFilter)
++					.setPublishType(PUBLISH_TYPE_UNSOLICITED)
++					.build();
++			session.publish(config, new DiscoverySessionCallback() {
++				@Override
++				public void onPublishStarted(PublishDiscoverySession session) {
++					LOG.info("WIFI Aware Key Session publish started");
++					key_session = session;
++				}
++				@Override
++				public void onMessageReceived(PeerHandle peerHandle, byte[] message) {
++					LOG.info("WIFI Aware key listener message received");
++					LOG.info("WIFI Aware key listener passphrase "+ localCommitment);
++					NetworkSpecifier networkSpecifier = new WifiAwareNetworkSpecifier.Builder(key_session, peerHandle)
++							.setPskPassphrase(localCommitment)
++							.setPort(key_port)
++							.build();
++					NetworkRequest myNetworkRequest = new NetworkRequest.Builder()
++							.addTransportType(NetworkCapabilities.TRANSPORT_WIFI_AWARE)
++							.setNetworkSpecifier(networkSpecifier)
++							.build();
++					ConnectivityManager.NetworkCallback callback = new ConnectivityManager.NetworkCallback() {
++						@Override
++						public void onAvailable(Network network) {
++							LOG.info("WIFI Aware key listener network available");
++						}
++					};
++
++					connectivityManager.requestNetwork(myNetworkRequest, callback);
++					network_callback = callback;
++					key_session.sendMessage(peerHandle,1,null);
++					LOG.info("WIFI Aware key listener message sent");
++				}
++			}, null);
++		}
++
++		@Override
++		public KeyAgreementConnection accept() throws IOException {
++			Socket s;
++			try {
++				LOG.info(" WIFI Aware key Server socket accepting");
++				s = key_ss.accept();
++				s.setSoTimeout(socketTimeout);
++			} catch (IOException e) {
++				// This is expected when the server socket is closed
++				LOG.info("Server socket closed");
++				return null;
++			}
++
++			DuplexTransportConnection conn =
++					new AndroidWifiAwareTransportConnection(AndroidWifiAwarePlugin.this, s, key_session, connectivityManager, network_callback);
++			if (LOG.isLoggable(INFO)) LOG.info(
++					ID + ": Incoming connection");
++			return new KeyAgreementConnection(conn, ID);
++		}
++
++		@Override
++		public void close() {
++			LOG.info("AwareKeyAgreementListener closing");
++			tryToClose(key_ss);
++		}
++	}
++
++	private void tryToClose(@Nullable ServerSocket ss) {
++		IoUtils.tryToClose(ss, LOG, WARNING);
++	}
++
++	@Nullable
++	@Override
++	public DuplexTransportConnection createKeyAgreementConnection(
++			byte[] remoteCommitment, BdfList descriptor) {
++		LOG.info("WIFI Aware createKeyAgreementConnection");
++
++		final CountDownLatch latch = new CountDownLatch(2);
++		key_network = null;
++		key_networkcallback = null;
++		key_networkCapabilities = null;
++		key_session = null;
++		final String key_uuid;
++		try{
++			key_uuid = descriptor.getString(1);
++		}catch (FormatException e) {
++			LOG.info("Invalid uuid in key agreement descriptor");
++			return null;
++		}
++		List<byte[]> matchFilter = new ArrayList<byte[]>();
++		matchFilter.add(key_uuid.getBytes());
++
++		SubscribeConfig config = new SubscribeConfig.Builder()
++				.setServiceName("Briar-WIFI-AWARE-ADD")
++				.setMatchFilter(matchFilter)
++				.build();
++
++		session.subscribe(config, new DiscoverySessionCallback() {
++			@Override
++			public void onSubscribeStarted(SubscribeDiscoverySession session) {
++				LOG.info("WIFI Aware Key subscribe started");
++				key_session = session;
++			}
++
++			@Override
++			public void onServiceDiscovered(PeerHandle peerHandle,
++				byte[] serviceSpecificInfo, List<byte[]> matchFilter) {
++				LOG.info("WIFI Aware Key service discovered");
++				key_session.sendMessage(peerHandle,0,null);
++				LOG.info("WIFI Aware Key subscriber sent message");
++			}
++
++			@Override
++			public void onMessageReceived(PeerHandle peerHandle, byte[] message) {
++				LOG.info("WIFI Aware key subscriber message received");
++				String passphrase = Base64.getEncoder().encodeToString(remoteCommitment);
++				LOG.info("WIFI Aware key subscriber passphrase "+ passphrase);
++				NetworkSpecifier networkSpecifier = new WifiAwareNetworkSpecifier.Builder(key_session, peerHandle)
++						.setPskPassphrase(passphrase)
++						.build();
++				NetworkRequest myNetworkRequest = new NetworkRequest.Builder()
++						.addTransportType(NetworkCapabilities.TRANSPORT_WIFI_AWARE)
++						.setNetworkSpecifier(networkSpecifier)
++						.build();
++				ConnectivityManager.NetworkCallback callback = new ConnectivityManager.NetworkCallback() {
++					@Override
++					public void onAvailable(Network network) {
++						LOG.info("WIFI Aware Key subscriber network available");
++						key_network = network;
++						latch.countDown();
++					}
++
++					@Override
++					public void onCapabilitiesChanged(Network network, NetworkCapabilities networkCapabilities) {
++						LOG.info("WIFI Aware Key subscriber onCapabilitiesChanged");
++						key_networkCapabilities = networkCapabilities;
++						key_network = network;
++						latch.countDown();
++					}
++				};
++
++				connectivityManager.requestNetwork(myNetworkRequest, callback);
++				key_networkcallback = callback;
++			}
++		}, null);
++
++		boolean timeout;
++		try {
++			timeout = latch.await(60, TimeUnit.SECONDS);
++		} catch (InterruptedException e) {
++			LOG.info("WIFI Aware createKeyAgreementConnection await interrupted");
++			//key_session.close();
++			return null;
++		}
++		if (timeout == false){
++			//key_session.close();
++			return null;
++		}
++
++		if (key_networkCapabilities == null || key_network == null){
++			LOG.info("WIFI Aware createKeyAgreementConnection missing parameters");
++			connectivityManager.unregisterNetworkCallback(key_networkcallback);
++			//key_session.close();
++			return null;
++		}
++		LOG.info("WIFI Aware Key subscriber creating socket");
++		WifiAwareNetworkInfo key_peerAwareInfo = (WifiAwareNetworkInfo) key_networkCapabilities.getTransportInfo();
++		Inet6Address peerIpv6 = key_peerAwareInfo.getPeerIpv6Addr();
++		int key_port = key_peerAwareInfo.getPort();
++		Socket socket;
++		try {
++			socket = key_network.getSocketFactory().createSocket(peerIpv6, key_port);
++		} catch (IOException e) {
++			LOG.info("WIFI Aware createKeyAgreementConnection socket failed");
++			connectivityManager.unregisterNetworkCallback(key_networkcallback);
++			//key_session.close();
++			return null;
++		}
++		LOG.info("WIFI Aware Key subscriber created socket");
++		return new AndroidWifiAwareTransportConnection(this, socket, key_session, connectivityManager, key_networkcallback);
++	}
++
++	@Override
++	public boolean supportsRendezvous() {
++		return false;
++	}
++
++	@Nullable
++	@Override
++	public RendezvousEndpoint createRendezvousEndpoint(KeyMaterialSource k,
++			boolean alice, ConnectionHandler incoming) {
++		throw new UnsupportedOperationException();
++	}
++
++	@Override
++	public TransportId getId() {
++		return ID;
++	}
++
++	@Override
++	public long getMaxLatency() {
++		return maxLatency;
++	}
++
++	@Override
++	public int getMaxIdleTime() {
++		return maxIdleTime;
++	}
++
++	private void updateProperties(){
++		TransportProperties p = callback.getLocalProperties();
++		String passphrase = p.get(PROP_PASSPHRASE);
++		String uuid = p.get(PROP_UUID);
++		if (uuid == null){
++			uuid = UUID.randomUUID().toString();
++		}
++		contact_uuid = uuid;
++
++		if (passphrase == null){
++			passphrase = UUID.randomUUID().toString();
++		}
++		contact_passphrase = passphrase;
++
++		p = new TransportProperties();
++		p.put(PROP_UUID, uuid);
++		p.put(PROP_PASSPHRASE, passphrase);
++		callback.mergeLocalProperties(p);
++	}
++
++	private class MyAttachCallback extends AttachCallback{
++		@Override
++		public void onAttached(WifiAwareSession s){
++			LOG.info("WifiAwareSession attached");
++			session = s;
++			start_contact_service();
++		}
++
++		@Override
++		public void onAttachFailed(){
++			transport_session = null;
++			session = null;
++		}
++	}
++
++	@Override
++	public void start() throws PluginException{
++		updateProperties();
++
++		if (appContext.getPackageManager().hasSystemFeature(
++				PackageManager.FEATURE_WIFI_AWARE)) {
++			LOG.info("WIFI Aware is supported");
++			LOG.info("WIFI Aware attaching session");
++			wifiAwareManager =
++					(WifiAwareManager)appContext.getSystemService(
++							Context.WIFI_AWARE_SERVICE);
++		}
++		else {
++			LOG.info("WIFI Aware not supported");
++			throw new PluginException();
++		}
++
++		IntentFilter filter =
++				new IntentFilter(WifiAwareManager.ACTION_WIFI_AWARE_STATE_CHANGED);
++		receiver = new BroadcastReceiver() {
++			@Override
++			public void onReceive(Context context, Intent intent) {
++				LOG.info("ACTION_WIFI_AWARE_STATE_CHANGED received");
++				// discard current sessions
++				if (transport_session != null){
++					if (transport_network_callback != null){
++						connectivityManager.unregisterNetworkCallback(transport_network_callback);
++						transport_network_callback = null;
++					}
++					transport_session.close();
++					transport_session = null;
++				}
++				if (session != null){
++					session.close();
++					session = null;
++				}
++
++				if (wifiAwareManager.isAvailable()) {
++					LOG.info("WIFI Aware is now on");
++					wifiAwareManager.attach(new MyAttachCallback(), null);
++				} else {
++					LOG.info("WIFI Aware is now off");
++				}
++			}
++		};
++		appContext.registerReceiver(receiver, filter);
++		if (wifiAwareManager.isAvailable()) {
++			wifiAwareManager.attach(new MyAttachCallback(), null);
++		}
++	}
++
++
++
++	private void start_contact_service() {
++		LOG.info("WIFI Aware contact transport UUID "+ contact_uuid);
++		LOG.info("WIFI Aware contact transport passphrase "+ contact_passphrase);
++
++		if (transport_ss != null && !transport_ss.isClosed()) {
++			tryToClose(transport_ss);
++		}
++		try {
++			transport_ss = new ServerSocket(0);
++		} catch (IOException e) {
++			LOG.info("WIFI Aware Plugin can't open Server socket");
++			return;
++		}
++
++		List<byte[]> contact_uuid_bytes = new ArrayList<byte[]>();
++		contact_uuid_bytes.add(contact_uuid.getBytes());
++
++		PublishConfig config = new PublishConfig.Builder()
++				.setServiceName("Briar-WIFI-AWARE-TRANSPORT")
++				.setMatchFilter(contact_uuid_bytes)
++				.setPublishType(PUBLISH_TYPE_UNSOLICITED)
++				.build();
++
++		session.publish(config, new DiscoverySessionCallback() {
++			@Override
++			public void onPublishStarted(PublishDiscoverySession session) {
++				LOG.info("WIFI Aware contact transport published");
++				transport_session = session;
++			}
++			@Override
++			public void onMessageReceived(PeerHandle peerHandle, byte[] message) {
++				LOG.info("WIFI Aware contact transport message received");
++				LOG.info("WIFI Aware contact transport passphrase "+ contact_passphrase);
++				NetworkSpecifier networkSpecifier = new WifiAwareNetworkSpecifier.Builder(transport_session, peerHandle)
++						.setPskPassphrase(contact_passphrase)
++						.setPort(transport_ss.getLocalPort())
++						.build();
++				NetworkRequest myNetworkRequest = new NetworkRequest.Builder()
++						.addTransportType(NetworkCapabilities.TRANSPORT_WIFI_AWARE)
++						.setNetworkSpecifier(networkSpecifier)
++						.build();
++				ConnectivityManager.NetworkCallback callback = new ConnectivityManager.NetworkCallback() {
++					@Override
++					public void onAvailable(Network network) {
++						LOG.info("WIFI Aware contact transport network available");
++					}
++				};
++
++				connectivityManager.requestNetwork(myNetworkRequest, callback);
++				transport_network_callback = callback;
++				transport_session.sendMessage(peerHandle,1,null);
++				LOG.info("WIFI Aware contact transport message sent");
++			}
++		}, null);
++
++		bind();
++	}
++
++	private void bind() {
++		ioExecutor.execute(() -> {
++			// Bind a server socket to accept connections from contacts
++			while (true) {
++				Socket s;
++				try {
++					s = transport_ss.accept();
++					s.setSoTimeout(socketTimeout);
++				} catch (IOException e) {
++					// This is expected when the server socket is closed
++					LOG.info("transport_ss closed");
++					return;
++				}
++				DuplexTransportConnection conn = new AndroidWifiAwareTransportConnection(this, s, transport_session, connectivityManager, transport_network_callback);
++				LOG.info("WIFI Aware Transport Connection received");
++				backoff.reset();
++				callback.handleConnection(conn);
++			}
++		});
++	}
++
++	@Override
++	public void stop() throws PluginException {
++		LOG.info("Stopping WIFI Aware Plugin");
++
++		tryToClose(transport_ss);
++		transport_session = null;
++		if (transport_network_callback != null){
++			connectivityManager.unregisterNetworkCallback(transport_network_callback);
++		}
++		if (session != null){
++			session.close();
++			session = null;
++		}
++		if (receiver != null){
++			appContext.unregisterReceiver(receiver);
++		}
++	}
++
++	@Override
++	public State getState() {
++		LOG.info("WIFI Aware getState");
++		return null;
++	}
++
++	@Override
++	public int getReasonsDisabled() {
++		LOG.info("WIFI Aware getReasonsDisabled");
++		return 0;
++	}
++
++	@Override
++	public boolean shouldPoll() {
++		LOG.info("WIFI Aware shouldPoll");
++		return true;
++	}
++
++	@Override
++	public int getPollingInterval() {
++		LOG.info("WIFI Aware getPollingInterval");
++		return backoff.getPollingInterval();
++	}
++
++	@Override
++	public void poll(
++			Collection<Pair<TransportProperties, ConnectionHandler>> properties) {
++		LOG.info("WIFI Aware poll called");
++		backoff.increment();
++		for (Pair<TransportProperties, ConnectionHandler> p : properties) {
++			wakefulIoExecutor.execute(() -> {
++					DuplexTransportConnection d = createConnection(p.getFirst());
++					if (d != null) {
++						backoff.reset();
++						p.getSecond().handleConnection(d);
++					}
++			});
++		}
++	}
++}
++
+Index: briar-android/src/main/java/org/briarproject/briar/android/AppModule.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- briar-android/src/main/java/org/briarproject/briar/android/AppModule.java	(revision be9255029bc252b843285a1e593661d29e6f520c)
++++ briar-android/src/main/java/org/briarproject/briar/android/AppModule.java	(date 1635009452749)
+@@ -24,6 +24,7 @@
+ import org.briarproject.bramble.api.plugin.simplex.SimplexPluginFactory;
+ import org.briarproject.bramble.api.reporting.DevConfig;
+ import org.briarproject.bramble.plugin.bluetooth.AndroidBluetoothPluginFactory;
++import org.briarproject.bramble.plugin.wifiaware.AndroidWifiAwarePluginFactory;
+ import org.briarproject.bramble.plugin.file.AndroidRemovableDrivePluginFactory;
+ import org.briarproject.bramble.plugin.tcp.AndroidLanTcpPluginFactory;
+ import org.briarproject.bramble.plugin.tor.AndroidTorPluginFactory;
+@@ -158,13 +159,15 @@
+ 	PluginConfig providePluginConfig(AndroidBluetoothPluginFactory bluetooth,
+ 			AndroidTorPluginFactory tor, AndroidLanTcpPluginFactory lan,
+ 			AndroidRemovableDrivePluginFactory drive,
++			AndroidWifiAwarePluginFactory aware,
+ 			FeatureFlags featureFlags) {
+ 		@NotNullByDefault
+ 		PluginConfig pluginConfig = new PluginConfig() {
+ 
+ 			@Override
+ 			public Collection<DuplexPluginFactory> getDuplexFactories() {
+-				return asList(bluetooth, tor, lan);
++				//return asList(bluetooth, tor, lan, aware);
++				return asList(aware);
+ 			}
+ 
+ 			@Override
